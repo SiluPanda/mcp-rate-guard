@@ -3,6 +3,7 @@
 Protocol-level rate limiter middleware for MCP (Model Context Protocol) servers.
 
 [![npm version](https://img.shields.io/npm/v/mcp-rate-guard.svg)](https://www.npmjs.com/package/mcp-rate-guard)
+[![npm downloads](https://img.shields.io/npm/dt/mcp-rate-guard.svg)](https://www.npmjs.com/package/mcp-rate-guard)
 [![license](https://img.shields.io/npm/l/mcp-rate-guard.svg)](https://github.com/SiluPanda/mcp-rate-guard/blob/master/LICENSE)
 [![node](https://img.shields.io/node/v/mcp-rate-guard.svg)](https://nodejs.org)
 
