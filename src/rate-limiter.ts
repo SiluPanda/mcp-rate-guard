@@ -29,7 +29,7 @@ function applyWindowShift(state: WindowState, now: number, windowMs: number): Wi
 function slidingWindowEffectiveCount(state: WindowState, now: number, windowMs: number): number {
   const shifted = applyWindowShift(state, now, windowMs);
   const overlapFraction = 1 - (now - shifted.currentWindowStart) / windowMs;
-  return shifted.previousCount * Math.max(0, overlapFraction) + shifted.currentCount;
+  return shifted.previousCount * Math.min(1, Math.max(0, overlapFraction)) + shifted.currentCount;
 }
 
 export async function check(
@@ -37,7 +37,7 @@ export async function check(
   extra: RequestExtra | undefined,
   options: RateLimiterOptions,
   store: RateLimitStore,
-): Promise<{ allowed: boolean; retryAfterMs?: number; rule?: RateLimitRule; key?: string; remaining?: number }> {
+): Promise<{ allowed: boolean; retryAfterMs?: number; rule?: RateLimitRule; key?: string; remaining?: number; currentCount?: number }> {
   const { method } = request;
   const exempt = options.exempt ?? [];
 
@@ -98,6 +98,7 @@ export async function check(
           retryAfterMs: Math.max(0, resetMs),
           rule,
           key: storeKey,
+          currentCount: effective,
         };
       }
     } else if (rule.max <= 0) {
@@ -116,10 +117,9 @@ export async function check(
   for (let i = 0; i < pairs.length; i++) {
     const { storeKey, rule } = pairs[i];
     const updated = await store.increment(storeKey, rule.windowMs);
-    if (i === 0) {
-      const effective = slidingWindowEffectiveCount(updated, now, rule.windowMs);
-      remaining = Math.max(0, rule.max - effective);
-    }
+    const effective = slidingWindowEffectiveCount(updated, now, rule.windowMs);
+    const ruleRemaining = Math.max(0, rule.max - effective);
+    remaining = remaining === undefined ? ruleRemaining : Math.min(remaining, ruleRemaining);
   }
 
   return { allowed: true, remaining };
@@ -215,7 +215,7 @@ export function createRateLimiter(_server: unknown, options: RateLimiterOptions)
           clientId,
           requestId: request.id ?? '',
           rule: result.rule!,
-          currentCount: result.rule!.max,
+          currentCount: result.currentCount ?? result.rule!.max,
           retryAfterSeconds: (result.retryAfterMs ?? 0) / 1000,
         };
         emitRateLimited(event);

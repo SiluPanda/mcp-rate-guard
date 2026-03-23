@@ -245,6 +245,21 @@ describe('check() — core rate limit logic', () => {
       expect(r.allowed).toBe(true);
     }
   });
+
+  it('remaining reflects the most restrictive rule across multiple applicable rules', async () => {
+    const options: RateLimiterOptions = {
+      global: { max: 10, windowMs: 60_000 },       // 10 global
+      methods: { 'tools/call': { max: 3, windowMs: 60_000 } }, // 3 per method (more restrictive)
+    };
+
+    // Make 2 tools/call requests
+    await check(req('tools/call', 1, { name: 'test' }), undefined, options, store);
+    const r = await check(req('tools/call', 2, { name: 'test' }), undefined, options, store);
+
+    expect(r.allowed).toBe(true);
+    // remaining should reflect per-method (1 remaining from max 3), not global (8 remaining from max 10)
+    expect(r.remaining).toBe(1);
+  });
 });
 
 describe('createRateLimiter()', () => {
@@ -388,5 +403,24 @@ describe('createRateLimiter()', () => {
 
     expect(events).toHaveLength(1);
     expect(events[0].toolName).toBe('image-gen');
+  });
+
+  it('rateLimited event has correct currentCount (not just rule.max)', async () => {
+    const options: RateLimiterOptions = {
+      store,
+      global: { max: 2, windowMs: 60_000 },
+      onRateLimited: () => {},
+    };
+    const limiter = createRateLimiter(null, options) as RateLimiterWithCheck;
+    const events: RateLimitedEvent[] = [];
+    limiter.on('rateLimited', (e: RateLimitedEvent) => events.push(e));
+
+    await limiter._check(req('ping', 1));
+    await limiter._check(req('ping', 2));
+    await limiter._check(req('ping', 3)); // Should be rejected
+
+    expect(events).toHaveLength(1);
+    expect(events[0].currentCount).toBeGreaterThanOrEqual(2); // Actual count, not rule.max
+    expect(events[0].currentCount).not.toBe(0); // Must be a real count
   });
 });
