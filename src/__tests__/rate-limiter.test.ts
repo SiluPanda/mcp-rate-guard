@@ -238,6 +238,32 @@ describe('check() — core rate limit logic', () => {
     expect(result.retryAfterMs).toBeGreaterThan(0);
   });
 
+  it('returns retryAfterMs > 0 when rate limited after a window shift', async () => {
+    const windowMs = 1_000;
+    const options: RateLimiterOptions = { global: { max: 3, windowMs } };
+
+    // Fill the first window (3 requests at t=0, hitting max)
+    for (let i = 0; i < 3; i++) {
+      const r = await check(req('ping', i), undefined, options, store);
+      expect(r.allowed).toBe(true);
+    }
+
+    // Advance exactly to the next window boundary (t=1000).
+    // The store still holds stale currentWindowStart=0.
+    // applyWindowShift moves the window: shifted.currentWindowStart=1000,
+    // previousCount=3. Sliding window effective = 3 * 1.0 + 0 = 3 >= max.
+    vi.advanceTimersByTime(windowMs);
+
+    const result = await check(req('ping', 99), undefined, options, store);
+    expect(result.allowed).toBe(false);
+    // Before the fix, retryAfterMs was computed from the stale window start:
+    // existing.currentWindowStart(0) + 1000 - 1000 = 0, causing tight retry loops.
+    // After the fix, it uses the shifted window start:
+    // shifted.currentWindowStart(1000) + 1000 - 1000 = 1000.
+    expect(result.retryAfterMs).toBeGreaterThan(0);
+    expect(result.retryAfterMs).toBe(windowMs);
+  });
+
   it('no rules configured: always allows', async () => {
     const options: RateLimiterOptions = {};
     for (let i = 0; i < 100; i++) {
