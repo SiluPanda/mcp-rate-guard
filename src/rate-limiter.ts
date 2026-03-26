@@ -92,7 +92,8 @@ export async function check(
     if (existing) {
       const effective = slidingWindowEffectiveCount(existing, now, rule.windowMs);
       if (effective >= rule.max) {
-        const resetMs = existing.currentWindowStart + rule.windowMs - now;
+        const shifted = applyWindowShift(existing, now, rule.windowMs);
+        const resetMs = shifted.currentWindowStart + rule.windowMs - now;
         return {
           allowed: false,
           retryAfterMs: Math.max(0, resetMs),
